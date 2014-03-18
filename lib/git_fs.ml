@@ -213,9 +213,20 @@ module Packed = struct
     if not (mem_in_pack t pack_sha1 sha1) then
       return_none
     else (
-      read_pack t pack_sha1 >>= fun pack ->
-      return (Pack.read pack sha1)
-    )
+      match Hashtbl.find packs sha1 with
+      | Some pack -> return (Pack.read pack sha1)
+      | None      ->
+          let file = file t pack_sha1 in
+          if Sys.file_exists file then (
+            let buf = Git_unix.read_file file in
+            read_index t pack_sha1 >>= fun index ->
+              let v_opt = Pack.Raw.read (Mstruct.of_bigarray buf) index sha1 in
+              return v_opt
+           ) else (
+            Printf.eprintf "No file associated with the pack object %s.\n" (SHA1.to_hex pack_sha1);
+            fail (Failure "read_file")
+           )
+     )
 
   let values = SHA1.Table.create ()
 

@@ -140,6 +140,25 @@ module Raw = struct
     |> String.concat ~sep:""
     |> SHA1.create
 
+  let read buf index sha1 =
+    let version, count = input_header buf in
+    Log.debugf "read version:%d count:%d" version count;
+    begin
+      let offset_tbl = index.Pack_index.offsets in
+      match SHA1.Map.find offset_tbl sha1 with
+      | Some offset -> begin
+          Log.debugf "read offset:%d" offset;
+          let orig_pos = Mstruct.offset buf in
+          Mstruct.shift buf (offset - orig_pos);
+          let packed_v = input_packed_value version buf in
+          let pic = 
+            Packed_value.to_pic (Int.Map.empty) (SHA1.Map.empty) (offset, sha1, packed_v) 
+          in
+          Some (Packed_value.PIC.to_value pic)
+      end
+      | None -> None
+    end
+
   let input buf ~index =
     let offset = Mstruct.offset buf in
     let version, count = input_header buf in
