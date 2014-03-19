@@ -437,12 +437,9 @@ let to_pic offsets sha1s (pos, sha1, t) =
   in
   { PIC.sha1; kind }
 
-let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
+let rec to_pic_i ~version ~index ~ba inv_offsets (pos, sha1, t) =
   let ba_len = Bigarray.Array1.dim ba in
   Log.debugf "to_pic_i ba_len:%d" ba_len;
-  let inv_offsets = 
-    Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist index.Pack_index.offsets)) 
-  in
   let input_packed_value =
     match version with
     | 2 -> V2.input
@@ -459,7 +456,7 @@ let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
         | Some offset -> begin
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~ba (offset, d.source, packed_v) in
+            let pic = to_pic_i ~version ~index ~ba inv_offsets (offset, d.source, packed_v) in
             PIC.Link { d with source = pic }
         end
         | None -> begin
@@ -476,7 +473,7 @@ let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
         | Some _sha1 -> begin
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~ba (offset, _sha1, packed_v) in
+            let pic = to_pic_i ~version ~index ~ba inv_offsets (offset, _sha1, packed_v) in
             PIC.Link { d with source = pic }
         end
         | None     -> begin
