@@ -55,11 +55,12 @@ module M = struct
 
   let read_file file =
     let open Lwt in
-    Log.infof "Reading %s" file;
+    Log.infof "Reading \"%s\"" file;
     Unix.handle_unix_error (fun () ->
         let fd = Unix.(openfile file [O_RDONLY; O_NONBLOCK] 0o644) in
         let ba = Lwt_bytes.map_file ~fd ~shared:false () in
         Unix.close fd;
+        Log.infof "Closed: \"%s\"" file;
         ba
       ) ()
 
@@ -77,7 +78,7 @@ module M = struct
             (fun _ -> return_unit)
       ) in
     aux dirname
-
+(*
   let list_files kind dir =
     if Sys.file_exists dir then (
       let s = Lwt_unix.files_of_directory dir in
@@ -87,6 +88,17 @@ module M = struct
       Lwt_stream.to_list s >>= fun l ->
       return l
     ) else
+      return_nil
+*)
+  let list_files kind dir = (* Lwt_unix.files_of_directory does not close dir in some cases *)
+    if Sys.file_exists dir then begin
+      let l = Array.to_list (Sys.readdir dir) in
+      let l = List.filter (fun s -> s <> "." && s <> "..") l in
+      let l = List.map (Filename.concat dir) l in
+      let l = List.filter kind l in
+      return l
+    end
+    else
       return_nil
 
   let directories dir =
