@@ -20,7 +20,8 @@ type perm =
   [ `Normal
   | `Exec
   | `Link
-  | `Dir ]
+  | `Dir 
+  | `Commit ]
 (** File permission. *)
 
 type entry = {

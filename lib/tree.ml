@@ -22,6 +22,7 @@ type perm = [
   | `Exec
   | `Link
   | `Dir
+  | `Commit
 ] with bin_io, compare, sexp
 
 type entry = {
@@ -44,6 +45,7 @@ let pretty_perm = function
   | `Exec   -> "exec"
   | `Link   -> "link"
   | `Dir    -> "dir"
+  | `Commit -> "commit"
 
 let pretty_entry e =
   sprintf "%s %s    %s\n"
@@ -62,6 +64,7 @@ let perm_of_string buf = function
   | "100755" -> `Exec
   | "120000" -> `Link
   | "40000"  -> `Dir
+  | "160000" -> `Commit
   | x        -> Mstruct.parse_error_buf buf "%S is not a valid permission." x
 
 let string_of_perm = function
@@ -69,6 +72,7 @@ let string_of_perm = function
   | `Exec   -> "100755"
   | `Link   -> "120000"
   | `Dir    -> "40000"
+  | `Commit -> "160000"
 
 let add_entry buf e =
   Bigbuffer.add_string buf (string_of_perm e.perm);
