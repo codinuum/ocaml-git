@@ -437,6 +437,56 @@ let to_pic offsets sha1s (pos, sha1, t) =
   in
   { PIC.sha1; kind }
 
+let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
+  let ba_len = Bigarray.Array1.dim ba in
+  Log.debugf "to_pic_i ba_len:%d" ba_len;
+  let inv_offsets = 
+    Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist index.Pack_index.offsets)) 
+  in
+  let input_packed_value =
+    match version with
+    | 2 -> V2.input
+    | 3 -> V3.input
+    | _ -> 
+        eprintf "pack version should be 2 or 3";
+        failwith "Packed_value.to_pic_i"
+  in
+  let kind = 
+    match t with
+    | Raw_value x -> PIC.Raw x
+    | Ref_delta d -> begin 
+        match SHA1.Map.find index.Pack_index.offsets d.source with
+        | Some offset -> begin
+            let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
+            let packed_v = input_packed_value buf in
+            let pic = to_pic_i ~version ~index ~ba (offset, d.source, packed_v) in
+            PIC.Link { d with source = pic }
+        end
+        | None -> begin
+            eprintf
+              "Packed_value.to_pic_i: shallow pack are not supported.\n%s is not in the pack file!\n"
+              (SHA1.to_hex d.source);
+            failwith "Packed_value.to_pic_i";
+        end
+    end
+    | Off_delta d -> begin
+        let offset = pos - d.source in
+        Log.debugf "to_pic_i offset:%d" offset;
+        match Int.Map.find inv_offsets offset with
+        | Some _sha1 -> begin
+            let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
+            let packed_v = input_packed_value buf in
+            let pic = to_pic_i ~version ~index ~ba (offset, _sha1, packed_v) in
+            PIC.Link { d with source = pic }
+        end
+        | None     -> begin
+            eprintf "cannot find offest %d in the index\n" offset;
+            failwith "Packed_value.to_pic_i"
+        end
+    end
+  in
+  { PIC.sha1; kind }
+
 (* XXX: merge with PIC.unpack *)
 let add_inflated_value_aux (return, bind) ~read ~offsets ~pos buf = function
   | Raw_value x ->

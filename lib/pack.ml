@@ -152,7 +152,7 @@ module Raw = struct
           Mstruct.shift buf (offset - orig_pos);
           let packed_v = input_packed_value version buf in
           let pic = 
-            Packed_value.to_pic (Int.Map.empty) (SHA1.Map.empty) (offset, sha1, packed_v) 
+            Packed_value.to_pic_i ~version ~index ~ba:(Mstruct.to_bigarray buf) (offset, sha1, packed_v) 
           in
           Some (Packed_value.PIC.to_value pic)
       end
