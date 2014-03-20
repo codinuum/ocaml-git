@@ -122,6 +122,8 @@ module Packed = struct
 
   let indexes = SHA1.Table.create ()
 
+  let inv_indexes = SHA1.Table.create ()
+
   let write_index t sha1 idx =
     let file = index t sha1 in
     if not (Hashtbl.mem indexes sha1) then Hashtbl.add_exn indexes ~key:sha1 ~data:idx;
@@ -150,6 +152,18 @@ module Packed = struct
         Printf.eprintf "%s does not exist." file;
         fail (Failure "read_index")
       )
+
+  let read_inv_index t sha1 =
+    match Hashtbl.find inv_indexes sha1 with
+    | Some ii ->
+	Log.debugf "read_inv_index cache hit!";
+	return ii
+    | None ->
+        read_index t sha1 >>= fun idx ->
+          let ii = Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist idx.Pack_index.offsets)) in
+          Hashtbl.add_exn inv_indexes ~key:sha1 ~data:ii;
+	  return ii
+          
 
   let keys = SHA1.Table.create ()
 
@@ -243,7 +257,8 @@ module Packed = struct
 		end
 	  ) >>= fun ba ->
 	    read_index t pack_sha1 >>= fun index ->
-	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
+              read_inv_index t pack_sha1 >>= fun inv_index ->
+	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index inv_index sha1 in
 	      return v_opt
       end
     end

@@ -62,7 +62,7 @@ module Raw: sig
   val keys: t -> SHA1.Set.t
   (** Return the keys present in the raw pack. *)
 
-  val read: Mstruct.t -> Pack_index.t -> SHA1.t -> Value.t option
+  val read: Mstruct.t -> Pack_index.t -> SHA1.t Int.Map.t -> SHA1.t -> Value.t option
   (** Same as the top-level [read] function but for raw packs. *)
 
 end

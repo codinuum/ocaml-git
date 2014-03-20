@@ -140,7 +140,7 @@ module Raw = struct
     |> String.concat ~sep:""
     |> SHA1.create
 
-  let read buf index sha1 =
+  let read buf index inv_index sha1 =
     let version, count = input_header buf in
     Log.debugf "read version:%d count:%d" version count;
     begin
@@ -150,12 +150,9 @@ module Raw = struct
           let orig_pos = Mstruct.offset buf in
           Mstruct.shift buf (offset - orig_pos);
           let packed_v = input_packed_value version buf in
-	  let inv_offsets = 
-	    Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist index.Pack_index.offsets)) 
-	  in
 	  let ba = Mstruct.to_bigarray buf in
           let pic = 
-            Packed_value.to_pic_i ~version ~index ~ba inv_offsets (offset, sha1, packed_v) 
+            Packed_value.to_pic_i ~version ~index ~inv_index ~ba (offset, sha1, packed_v) 
           in
           Some (Packed_value.PIC.to_value pic)
       end
