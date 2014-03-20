@@ -102,18 +102,26 @@ module Packed = struct
     let pack_file = "pack-" ^ (SHA1.to_hex sha1) ^ ".pack" in
     pack_dir / pack_file
 
+  let packs_opt = ref None
+
   let list root =
     Log.debugf "list %s" root;
-    let packs = root / ".git" / "objects" / "pack" in
-    Git_unix.files packs >>= fun packs ->
-    let packs = List.map ~f:Filename.basename packs in
-    let packs = List.filter ~f:(fun f -> Filename.check_suffix f ".idx") packs in
-    let packs = List.map ~f:(fun f ->
-        let p = Filename.chop_suffix f ".idx" in
-        let p = String.sub p 5 (String.length p - 5) in
-        SHA1.of_hex p
-      ) packs in
-    return packs
+    match !packs_opt with
+    | Some ps -> 
+        Log.debugf "list cache hit!";
+        return ps
+    | None ->
+        let packs = root / ".git" / "objects" / "pack" in
+        Git_unix.files packs >>= fun packs ->
+          let packs = List.map ~f:Filename.basename packs in
+          let packs = List.filter ~f:(fun f -> Filename.check_suffix f ".idx") packs in
+          let packs = List.map ~f:(fun f ->
+            let p = Filename.chop_suffix f ".idx" in
+            let p = String.sub p 5 (String.length p - 5) in
+            SHA1.of_hex p
+                                  ) packs in
+          packs_opt := Some packs;
+          return packs
 
   let index root sha1 =
     let pack_dir = root / ".git" / "objects" / "pack" in
@@ -163,8 +171,7 @@ module Packed = struct
           let ii = Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist idx.Pack_index.offsets)) in
           Hashtbl.add_exn inv_indexes ~key:sha1 ~data:ii;
 	  return ii
-          
-
+      
   let keys = SHA1.Table.create ()
 
   let read_keys t sha1 =

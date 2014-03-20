@@ -242,18 +242,26 @@ let ls_tree = {
           S.read_exn t sha1 >>= fun v -> begin
             match v with
             | Value.Blob blob -> 
-                printf "blob %s %s\n%!" (SHA1.to_hex sha1) path;
+                printf "blob %s %s\n" (SHA1.to_hex sha1) path;
                 return_unit
             | Value.Tree tree -> begin
-                Lwt_list.iter_s
+                Lwt_list.iter_p
                   (fun e -> 
                     let kind = get_kind e.Tree.perm in
                     let path' = Filename.concat path e.Tree.name in
-                    printf "%s %s %s\n%!" kind (SHA1.to_hex e.Tree.node) path';
-                    walk path' e.Tree.node
+                    printf "%s %s %s\n" kind (SHA1.to_hex e.Tree.node) path';
+                    if kind = "tree" then
+                      walk path' e.Tree.node
+                    else
+                      return_unit
                   ) tree
             end
-            | _ -> return_unit
+            | Value.Tag tag ->
+                printf "tag %s %s\n" (SHA1.to_hex sha1) path;
+                return_unit
+            | Value.Commit commit ->
+                printf "commit %s %s\n" (SHA1.to_hex sha1) path;
+                return_unit
           end
         in
 
