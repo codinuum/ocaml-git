@@ -233,9 +233,9 @@ let ls_tree = {
 	in
 
         let get_kind = function
-          | `Dir -> "tree"
-          | `Commit -> "commit"
-          | _ -> "blob"
+          | `Dir -> "tree", true
+          | `Commit -> "commit", false
+          | _ -> "blob", false
         in
 
         let rec walk path sha1 =
@@ -245,12 +245,12 @@ let ls_tree = {
                 printf "blob %s %s\n" (SHA1.to_hex sha1) path;
                 return_unit
             | Value.Tree tree -> begin
-                Lwt_list.iter_p
+                Lwt_list.iter_s
                   (fun e -> 
-                    let kind = get_kind e.Tree.perm in
                     let path' = Filename.concat path e.Tree.name in
+                    let kind, is_dir = get_kind e.Tree.perm in
                     printf "%s %s %s\n" kind (SHA1.to_hex e.Tree.node) path';
-                    if kind = "tree" then
+                    if is_dir then
                       walk path' e.Tree.node
                     else
                       return_unit
@@ -280,7 +280,7 @@ let ls_tree = {
                   | Value.Tree tree -> 
                       List.iter 
                         ~f:(fun e -> 
-                          let kind = get_kind e.Tree.perm in
+                          let kind, is_dir = get_kind e.Tree.perm in
                           printf "%s %s %s\n" kind (SHA1.to_hex e.Tree.node) e.Tree.name
                            ) 
                         tree

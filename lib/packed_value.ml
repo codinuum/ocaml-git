@@ -477,7 +477,7 @@ let rec to_pic_i ~version ~index ~inv_index ~ba (pos, sha1, t) =
             PIC.Link { d with source = pic }
         end
         | None     -> begin
-            eprintf "cannot find offest %d in the index\n" offset;
+            eprintf "cannot find offest %d in the inv_index\n" offset;
             failwith "Packed_value.to_pic_i"
         end
     end
