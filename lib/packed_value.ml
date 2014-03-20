@@ -445,8 +445,8 @@ let rec to_pic_i ~version ~index ~inv_index ~ba (pos, sha1, t) =
     | 2 -> V2.input
     | 3 -> V3.input
     | _ -> 
-        eprintf "pack version should be 2 or 3";
-        failwith "Packed_value.to_pic_i"
+	eprintf "pack version should be 2 or 3";
+	failwith "Packed_value.to_pic_i"
   in
   let kind = 
     match t with

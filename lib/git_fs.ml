@@ -142,7 +142,7 @@ module Packed = struct
       Pack_index.add buf idx;
       Git_unix.write_file file (Misc.buffer_contents buf)
     )
-
+(*
   let read_index t sha1 =
     match Hashtbl.find indexes sha1 with
     | Some i -> 
@@ -160,6 +160,26 @@ module Packed = struct
         Printf.eprintf "%s does not exist." file;
         fail (Failure "read_index")
       )
+*)
+  let _read_index t sha1 =
+    match Hashtbl.find indexes sha1 with
+    | Some i -> 
+	Log.debugf "read_index cache hit!";
+	i
+    | None   ->
+      let file = index t sha1 in
+      if Sys.file_exists file then
+        let ba = Git_unix.read_file file in
+        let buf = Mstruct.of_bigarray ba in
+        let index = Pack_index.input buf in
+        Hashtbl.add_exn indexes ~key:sha1 ~data:index;
+        index
+      else (
+        Printf.eprintf "%s does not exist." file;
+	failwith "read_index"
+      )
+
+  let read_index t sha1 = return (_read_index t sha1)
 
   let read_inv_index t sha1 =
     match Hashtbl.find inv_indexes sha1 with
@@ -171,7 +191,7 @@ module Packed = struct
           let ii = Int.Map.of_alist_exn (List.Assoc.inverse (SHA1.Map.to_alist idx.Pack_index.offsets)) in
           Hashtbl.add_exn inv_indexes ~key:sha1 ~data:ii;
 	  return ii
-      
+(*
   let keys = SHA1.Table.create ()
 
   let read_keys t sha1 =
@@ -191,6 +211,12 @@ module Packed = struct
       in
       Hashtbl.add_exn keys ~key:sha1 ~data;
       data
+*)
+  let read_keys t sha1 =
+    Log.debugf "read_keys %s" (SHA1.to_hex sha1);
+    let idx = _read_index t sha1 in
+    SHA1.Set.of_list (SHA1.Map.keys idx.Pack_index.offsets)
+
 
   let packs = SHA1.Table.create ()
 
@@ -201,17 +227,18 @@ module Packed = struct
 	return pack
     | None      ->
       let file = file t sha1 in
-      if Sys.file_exists file then (
+      if Sys.file_exists file then begin
         let ba = Git_unix.read_file file in
         read_index t sha1 >>= fun index ->
         let pack = Pack.Raw.input (Mstruct.of_bigarray ba) ~index:(Some index) in
         let pack = Pack.to_pic pack in
         Hashtbl.add_exn packs ~key:sha1 ~data:pack;
         return pack
-      ) else (
+      end
+      else begin
         Printf.eprintf "No file associated with the pack object %s.\n" (SHA1.to_hex sha1);
         fail (Failure "read_pack")
-      )
+      end
 
   let write_pack t sha1 pack =
     let file = file t sha1 in
@@ -229,10 +256,12 @@ module Packed = struct
   let mem_in_pack t pack_sha1 sha1 =
     Log.debugf "mem_in_pack %s:%s"
       (SHA1.to_hex pack_sha1) (SHA1.to_hex sha1);
+(*
     let keys = read_keys t pack_sha1 in
     Set.mem keys sha1
-
-  let ba_tbl = SHA1.Table.create()
+*)
+    let idx = _read_index t pack_sha1 in
+    SHA1.Map.mem idx.Pack_index.offsets sha1
 
   let read_in_pack t pack_sha1 sha1 =
     Log.debugf "read_in_pack %s:%s"
@@ -244,30 +273,20 @@ module Packed = struct
       | Some pack -> 
 	  Log.debugf "read_in_pack pack cache hit!";
 	  return (Pack.read pack sha1)
-      | None      -> begin
-	  (
-	    match Hashtbl.find ba_tbl pack_sha1 with
-	    | Some ba -> 
-		Log.debugf "read_in_pack ba cache hit!"; 
-		return ba
-	    | None ->
-		let file = file t pack_sha1 in
-		if Sys.file_exists file then begin
-		  let ba = Git_unix.read_file file in
-		  Hashtbl.add_exn ba_tbl ~key:pack_sha1 ~data:ba;
-		  return ba
-		end 
-		else begin
-		  Printf.eprintf 
-		    "No file associated with the pack object %s.\n" (SHA1.to_hex pack_sha1);
-		  fail (Failure "read_in_pack")
-		end
-	  ) >>= fun ba ->
+      | None      ->
+	  let file = file t pack_sha1 in
+	  if Sys.file_exists file then begin
+	    let ba = Git_unix.read_file file in
 	    read_index t pack_sha1 >>= fun index ->
               read_inv_index t pack_sha1 >>= fun inv_index ->
-	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index inv_index sha1 in
-	      return v_opt
-      end
+		let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index inv_index sha1 in
+		return v_opt
+	  end 
+	  else begin
+	    Printf.eprintf 
+	      "No file associated with the pack object %s.\n" (SHA1.to_hex pack_sha1);
+	    fail (Failure "read_in_pack")
+	  end
     end
 
   let values = SHA1.Table.create ()
@@ -290,7 +309,7 @@ module Packed = struct
       end >>= function
       | None   -> return_none
       | Some v ->
-        ignore (SHA1.Table.add values ~key:sha1 ~data:v);
+(*        ignore (SHA1.Table.add values ~key:sha1 ~data:v); *)
         return (Some v)
 
   let mem t sha1 =
