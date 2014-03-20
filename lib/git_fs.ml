@@ -143,8 +143,8 @@ module Packed = struct
     | None   ->
       let file = index t sha1 in
       if Sys.file_exists file then
-        let buf = Git_unix.read_file file in
-        let buf = Mstruct.of_bigarray buf in
+        let ba = Git_unix.read_file file in
+        let buf = Mstruct.of_bigarray ba in
         let index = Pack_index.input buf in
         Hashtbl.add_exn indexes ~key:sha1 ~data:index;
         return index
