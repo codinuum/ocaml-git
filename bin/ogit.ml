@@ -142,6 +142,7 @@ let run t =
   )
 
 (* CAT *)
+(*
 let cat = {
   name = "cat-file";
   doc  = "Provide content or type and size information for repository objects";
@@ -159,6 +160,53 @@ let cat = {
         return_unit
       end in
     Term.(mk cat_file $ file)
+}
+*)
+(* CAT-FILE *)
+let cat_file = {
+  name = "cat-file";
+  doc  = "Provide content or type and size information for repository objects";
+  man  = [];
+  term =
+  let ty_flag = mk_flag ["t"] "Instead of the content, show the object type." in
+  let sz_flag = mk_flag ["s"] "Instead of the content, show the object size." in
+  let id =
+    let doc = Arg.info ~docv:"ID" ~doc:"The id of the repository object." [] in
+    Arg.(required & pos 0 (some string) None & doc) 
+  in
+  let cat_file (module S: Store.S) ty_flag sz_flag id =
+    run begin
+      S.create () >>= fun t ->
+	S.read_exn t (SHA1.of_hex id) >>= fun v -> begin
+	  let t, c, s =
+	    match v with
+	    | Value.Blob blob -> 
+		let c = Blob.to_string blob in
+		"blob", c, String.length c
+	    | Value.Commit commit ->
+		let c = Commit.to_string commit in
+		"commit", c, String.length c
+	    | Value.Tree tree ->
+		let c = Tree.to_string tree in
+		"tree", c, String.length c
+	    | Value.Tag tag ->
+		let c = Tag.to_string tag in
+		"tag", c, String.length c
+	  in
+	  if ty_flag then
+	    Printf.printf "%s%!" t;
+
+	  if sz_flag then
+	    Printf.printf "%d%!" s;
+
+	  if not ty_flag && not sz_flag then
+	    Printf.printf "%s%!" c;
+
+	  return_unit
+	end 
+    end
+  in
+  Term.(mk cat_file $ backend $ ty_flag $ sz_flag $ id)
 }
 
 (* LS-REMOTE *)
@@ -214,14 +262,14 @@ let ls_tree = {
   doc  = "List the contents of a tree object.";
   man  = [];
   term =
-  let recurse = mk_flag ["r"] "Recurse into sub-trees." in
+  let recurse_flag = mk_flag ["r"] "Recurse into sub-trees." in
   let oid =
     let doc = Arg.info [] ~docv:"ID"
         ~doc:"The id of the commit." 
     in
     Arg.(required & pos 0 (some string) None & doc ) 
   in
-  let ls (module S: Store.S) recurse oid =
+  let ls (module S: Store.S) recurse_flag oid =
     run begin
       S.create () >>= fun t ->
 
@@ -269,7 +317,7 @@ let ls_tree = {
           (fun () ->
             let commit_sha1 = SHA1.of_hex oid in
 
-            if recurse then begin
+            if recurse_flag then begin
               tree_of_commit commit_sha1 >>= fun tree_sha1 ->
                 walk "" tree_sha1
             end
@@ -294,7 +342,7 @@ let ls_tree = {
 	    return_unit)
     end 
   in
-  Term.(mk ls $ backend $ recurse $ oid)
+  Term.(mk ls $ backend $ recurse_flag $ oid)
 }
 
 (* READ-TREE *)
@@ -462,7 +510,7 @@ let default =
     ~man
 
 let commands = List.map ~f:command [
-    cat;
+    cat_file;
     ls_remote;
     ls_files;
     ls_tree;
