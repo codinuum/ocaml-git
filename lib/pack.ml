@@ -84,25 +84,26 @@ module Raw = struct
     | _ -> failwith "pack version should be 2 or 3"
 
   let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
-    Log.debugf "index_of_value";
+    Log.debugf "index_of_values_aux";
     let empty = Pack_index.empty ~pack_checksum () in
-    let rec loop (offsets, index) = function
+    let rec loop index = function
       | []                 -> return index
       | (pos, raw, p) :: t ->
         let raw = Bigstring.to_string raw in
         let crc = Misc.crc32 raw in
         bind
-          (sha1 ~offsets ~pos p)
+          (sha1 ~offsets:index.Pack_index.inv_offsets ~pos p)
           (fun sha1 ->
-             let index = Pack_index.({
-                 offsets = SHA1.Map.add index.offsets ~key:sha1 ~data:pos;
-                 crcs    = SHA1.Map.add index.crcs    ~key:sha1 ~data:crc;
-                 pack_checksum;
-               }) in
-             let offsets = Int.Map.add offsets ~key:pos ~data:sha1 in
-             loop (offsets, index) t)
+            let index = Pack_index.(
+	      { offsets     = SHA1.Map.add index.offsets ~key:sha1 ~data:pos;
+		inv_offsets = Int.Map.add index.inv_offsets ~key:pos ~data:sha1;
+		crcs        = SHA1.Map.add index.crcs ~key:sha1 ~data:crc;
+		pack_checksum;
+	      } 
+	     )in
+            loop index t)
     in
-    loop (Int.Map.empty, empty) values
+    loop empty values
 
   let lwt_monad = Lwt.return, Lwt.bind
   let id_monad = (fun x ->x), (fun x f -> f x)
@@ -140,7 +141,7 @@ module Raw = struct
     |> String.concat ~sep:""
     |> SHA1.create
 
-  let read buf index inv_index sha1 =
+  let read buf index sha1 =
     let version, count = input_header buf in
     Log.debugf "read version:%d count:%d" version count;
     begin
@@ -152,7 +153,7 @@ module Raw = struct
           let packed_v = input_packed_value version buf in
 	  let ba = Mstruct.to_bigarray buf in
           let pic = 
-            Packed_value.to_pic_i ~version ~index ~inv_index ~ba (offset, sha1, packed_v) 
+            Packed_value.to_pic_i ~version ~index ~ba (offset, sha1, packed_v) 
           in
           Some (Packed_value.PIC.to_value pic)
       end

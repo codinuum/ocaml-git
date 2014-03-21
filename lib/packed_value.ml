@@ -437,7 +437,7 @@ let to_pic offsets sha1s (pos, sha1, t) =
   in
   { PIC.sha1; kind }
 
-let rec to_pic_i ~version ~index ~inv_index ~ba (pos, sha1, t) =
+let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
   let ba_len = Bigarray.Array1.dim ba in
   Log.debugf "to_pic_i ba_len:%d" ba_len;
   let input_packed_value =
@@ -456,7 +456,7 @@ let rec to_pic_i ~version ~index ~inv_index ~ba (pos, sha1, t) =
         | Some offset -> begin
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~inv_index ~ba (offset, d.source, packed_v) in
+            let pic = to_pic_i ~version ~index ~ba (offset, d.source, packed_v) in
             PIC.Link { d with source = pic }
         end
         | None -> begin
@@ -469,15 +469,15 @@ let rec to_pic_i ~version ~index ~inv_index ~ba (pos, sha1, t) =
     | Off_delta d -> begin
         let offset = pos - d.source in
         Log.debugf "to_pic_i offset:%d" offset;
-        match Int.Map.find inv_index offset with
+        match Int.Map.find index.Pack_index.inv_offsets offset with
         | Some _sha1 -> begin
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~inv_index ~ba (offset, _sha1, packed_v) in
+            let pic = to_pic_i ~version ~index ~ba (offset, _sha1, packed_v) in
             PIC.Link { d with source = pic }
         end
         | None     -> begin
-            eprintf "cannot find offest %d in the inv_index\n" offset;
+            eprintf "cannot find offest %d in the index\n" offset;
             failwith "Packed_value.to_pic_i"
         end
     end

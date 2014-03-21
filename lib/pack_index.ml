@@ -20,9 +20,10 @@ module Log = Log.Make(struct let section = "pack-index" end)
 
 module T = struct
   type t = {
-    offsets : int SHA1.Map.t;
-    crcs    : int32 SHA1.Map.t;
-    pack_checksum: SHA1.t;
+    offsets       : int SHA1.Map.t;
+    inv_offsets   : SHA1.t Int.Map.t;
+    crcs          : int32 SHA1.Map.t;
+    pack_checksum : SHA1.t;
   } with bin_io, compare, sexp
   let hash (t: t) = Hashtbl.hash t
   include Sexpable.To_stringable (struct type nonrec t = t with sexp end)
@@ -36,9 +37,10 @@ let empty ?pack_checksum () =
     | None   -> SHA1.of_string "" (* XXX: ugly *)
     | Some c -> c in
   {
-    offsets = SHA1.Map.empty;
-    crcs    = SHA1.Map.empty;
-    pack_checksum;
+   offsets     = SHA1.Map.empty;
+   inv_offsets = Int.Map.empty;
+   crcs        = SHA1.Map.empty;
+   pack_checksum;
   }
 
 let pretty t =
@@ -78,7 +80,7 @@ let input_header buf =
     Mstruct.parse_error_buf buf "wrong index version (%ld)" version
 
 let input_keys buf n =
-  Log.debugf "input: reading the %d objects IDs" n;
+  Log.debugf "input: reading the %d object IDs" n;
   let a = Array.create n (SHA1.of_string "") in
   for i=0 to n - 1 do
     a.(i) <- SHA1.input buf;
@@ -102,8 +104,8 @@ let input buf =
     for i=0 to 255 do
       a.(i) <- Mstruct.get_be_uint32 buf;
     done;
-    a in
-
+    a 
+  in
   let nb_objects = Int32.to_int_exn fanout.(255) in
 
   (* Read the names *)
@@ -112,51 +114,51 @@ let input buf =
   (* Read the CRCs *)
   Log.debugf "input: reading the %d CRCs" nb_objects;
   let crcs =
-    let a = Array.create nb_objects (SHA1.of_string "", 0l) in
-    for i=0 to nb_objects-1 do
-      let crc = Mstruct.get_be_uint32 buf in
-      a.(i) <- (names.(i), crc);
-    done;
-    a in
-
+    Array.foldi names ~init:SHA1.Map.empty 
+      ~f:
+      (fun i m name ->
+	SHA1.Map.add m ~key:name ~data:(Mstruct.get_be_uint32 buf)
+      )
+  in
   (* Read the offsets *)
   Log.debugf "input: reading the %d offsets" nb_objects;
   let number_of_conts = ref 0 in
-  let offsets, conts =
-    let a = Array.create nb_objects 0l in
-    let b = Array.create nb_objects false in
-    for i=0 to nb_objects-1 do
-      let more = match Int.(Mstruct.get_uint8 buf land 128) with
+  let conts = ref [] in
+  let offsets, inv_offsets =
+    Array.foldi names ~init:(SHA1.Map.empty, Int.Map.empty)
+      ~f:
+      (fun i (m, im) name ->
+	let more = match Int.(Mstruct.get_uint8 buf land 128) with
         | 0 -> false
-        | _ -> true in
-      let n =
-        Mstruct.shift buf (-1);
-        Mstruct.get_be_uint32 buf in
-      a.(i) <- n;
-      if more then (
-        b.(i) <- true;
-        incr number_of_conts;
-      );
-    done;
-    a, b in
-
-  Log.debugf "input: reading the %d offset continuations" !number_of_conts;
-  let offsets = Array.mapi (fun i name ->
-      let offset = offsets.(i) in
-      let cont = conts.(i) in
-      if cont then (
-        let offset = Mstruct.get_be_uint64 buf in
-        (name, Int64.to_int_exn offset)
-      ) else
-        (name, Int32.to_int_exn offset)
-    ) names in
+        | _ -> true 
+	in
+	let n =
+          Mstruct.shift buf (-1);
+          Mstruct.get_be_uint32 buf 
+	in
+	if more then begin
+	  incr number_of_conts;
+	  conts := i :: !conts;
+	  (m, im)
+	end
+	else
+	  let o = Int32.to_int_exn n in
+	  (SHA1.Map.add m ~key:name ~data:o, Int.Map.add im ~key:o ~data:name)
+      )
+  in
+  Log.debugf "input: reading the %d large offsets" !number_of_conts;
+  let offsets, inv_offsets =
+    List.fold_left !conts ~init:(offsets, inv_offsets)
+      ~f:
+      (fun (m, im) i ->
+	let n = names.(i) in
+	let o = Int64.to_int_exn (Mstruct.get_be_uint64 buf) in
+	SHA1.Map.add m ~key:n ~data:o, Int.Map.add im ~key:o ~data:n
+      ) 
+  in
   let pack_checksum = SHA1.input buf in
   let _checksum = SHA1.input buf in
-
-  let offsets_alist = Array.to_list offsets in
-  let offsets = SHA1.Map.of_alist_exn offsets_alist in
-  let crcs = SHA1.Map.of_alist_exn (Array.to_list crcs) in
-  { offsets; crcs; pack_checksum }
+  { offsets; inv_offsets; crcs; pack_checksum }
 
 let add buf t =
   let n = SHA1.Map.length t.offsets in
