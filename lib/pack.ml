@@ -83,27 +83,27 @@ module Raw = struct
     | 3 -> Packed_value.V3.crc32 t
     | _ -> failwith "pack version should be 2 or 3"
 
-  let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
+let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
     Log.debugf "index_of_values_aux";
     let empty = Pack_index.empty ~pack_checksum () in
-    let rec loop index = function
-      | []                 -> return index
+    let rec loop (offsets, index) = function
+      | [] -> return index
       | (pos, raw, p) :: t ->
         let raw = Bigstring.to_string raw in
         let crc = Misc.crc32 raw in
         bind
-          (sha1 ~offsets:index.Pack_index.inv_offsets ~pos p)
+          (sha1 ~offsets ~pos p)
           (fun sha1 ->
-            let index = Pack_index.(
-	      { offsets     = SHA1.Map.add index.offsets ~key:sha1 ~data:pos;
-		inv_offsets = Int.Map.add index.inv_offsets ~key:pos ~data:sha1;
-		crcs        = SHA1.Map.add index.crcs ~key:sha1 ~data:crc;
-		pack_checksum;
-	      } 
-	     )in
-            loop index t)
+             let index = Pack_index.({
+                 offsets = SHA1.Map.add index.offsets ~key:sha1 ~data:pos;
+                 crcs = SHA1.Map.add index.crcs ~key:sha1 ~data:crc;
+                 pack_checksum;
+               }) in
+             let offsets = Int.Map.add offsets ~key:pos ~data:sha1 in
+             loop (offsets, index) t)
     in
-    loop empty values
+    loop (Int.Map.empty, empty) values
+
 
   let lwt_monad = Lwt.return, Lwt.bind
   let id_monad = (fun x ->x), (fun x f -> f x)
@@ -143,19 +143,16 @@ module Raw = struct
 
   let read buf index sha1 =
     let version, count = input_header buf in
-    Log.debugf "read version:%d count:%d" version count;
+    Log.debugf "read: version=%d count=%d" version count;
     begin
-      match SHA1.Map.find index.Pack_index.offsets sha1 with
+      match index#find_offset sha1 with
       | Some offset -> begin
-          Log.debugf "read offset:%d" offset;
+          Log.debugf "read: offset=%d" offset;
           let orig_pos = Mstruct.offset buf in
           Mstruct.shift buf (offset - orig_pos);
           let packed_v = input_packed_value version buf in
 	  let ba = Mstruct.to_bigarray buf in
-          let pic = 
-            Packed_value.to_pic_i ~version ~index ~ba (offset, sha1, packed_v) 
-          in
-          Some (Packed_value.PIC.to_value pic)
+	  Some (Packed_value.to_value ~version ~index ~ba (offset, packed_v))
       end
       | None -> None
     end

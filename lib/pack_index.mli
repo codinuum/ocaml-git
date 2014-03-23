@@ -20,14 +20,11 @@ open Core_kernel.Std
 
 type t = {
     offsets       : int SHA1.Map.t;
-    inv_offsets   : SHA1.t Int.Map.t;
     crcs          : int32 SHA1.Map.t;
     pack_checksum : SHA1.t;
 }
 (** [offsets] is the positions of the SHA1 objects in the
     corresponding raw pack file.
-
-    [inv_offsets] is the inverse of [offsets].
 
     [crcs] contains the CRC-32 value of the packed object data.
 
@@ -46,3 +43,10 @@ val lengths: t -> int option SHA1.Map.t
 
 val empty: ?pack_checksum:SHA1.t -> unit -> t
 (** The empty pack index. *)
+
+class type c_t = object
+  method find_offset : SHA1.t -> int option
+  method mem         : SHA1.t -> bool
+end
+
+class c : Cstruct.buffer -> c_t

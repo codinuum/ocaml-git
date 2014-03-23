@@ -128,6 +128,25 @@ module Packed = struct
     let idx_file = "pack-" ^ (SHA1.to_hex sha1) ^ ".idx" in
     pack_dir / idx_file
 
+  let indexes_c = SHA1.Table.create ()      
+
+  let read_index_c t sha1 =
+    match Hashtbl.find indexes_c sha1 with
+    | Some i -> 
+	Log.debugf "read_index_c cache hit!";
+	i
+    | None   ->
+      let file = index t sha1 in
+      if Sys.file_exists file then
+        let ba = Git_unix.read_file file in
+	let index = new Pack_index.c ba in
+        Hashtbl.add_exn indexes_c ~key:sha1 ~data:index;
+        index
+      else (
+        Printf.eprintf "%s does not exist." file;
+	failwith "read_index_c"
+      )
+
   let indexes = SHA1.Table.create ()
 
   let write_index t sha1 idx =
@@ -161,10 +180,25 @@ module Packed = struct
 
   let read_index t sha1 = return (_read_index t sha1)
 
+  let keys = SHA1.Table.create ()
+
   let read_keys t sha1 =
     Log.debugf "read_keys %s" (SHA1.to_hex sha1);
-    let idx = _read_index t sha1 in
-    SHA1.Set.of_list (SHA1.Map.keys idx.Pack_index.offsets)
+    match Hashtbl.find keys sha1 with
+    | Some k -> k
+    | None ->
+      let data = match Hashtbl.find indexes sha1 with
+        | Some i -> SHA1.Set.of_list (SHA1.Map.keys i.Pack_index.offsets)
+        | None ->
+          let file = index t sha1 in
+          if Sys.file_exists file then
+            let buf = Git_unix.read_file file in
+            Pack_index.keys (Mstruct.of_bigarray buf)
+          else
+            failwith "Git_fs.Packed.read_keys"
+      in
+      Hashtbl.add_exn keys ~key:sha1 ~data;
+      data
 
 
   let packs = SHA1.Table.create ()
@@ -205,8 +239,12 @@ module Packed = struct
   let mem_in_pack t pack_sha1 sha1 =
     Log.debugf "mem_in_pack %s:%s"
       (SHA1.to_hex pack_sha1) (SHA1.to_hex sha1);
+    let idx = read_index_c t pack_sha1 in
+    idx#mem sha1
+(*
     let idx = _read_index t pack_sha1 in
     SHA1.Map.mem idx.Pack_index.offsets sha1
+*)
 
   let read_in_pack t pack_sha1 sha1 =
     Log.debugf "read_in_pack %s:%s"
@@ -222,7 +260,10 @@ module Packed = struct
 	  let file = file t pack_sha1 in
 	  if Sys.file_exists file then begin
 	    let ba = Git_unix.read_file file in
+	    let index = read_index_c t pack_sha1 in
+(*
 	    read_index t pack_sha1 >>= fun index ->
+*)
 	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
 	      return v_opt
 	  end 

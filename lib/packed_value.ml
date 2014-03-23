@@ -400,7 +400,7 @@ module PIC = struct
     let buf = unpack p in
     Value.input_inflated (Mstruct.of_string buf)
 
-end
+end (* of module Packed_value.PIC *)
 
 let of_pic index ~pos t =
   match t.PIC.kind with
@@ -437,52 +437,50 @@ let to_pic offsets sha1s (pos, sha1, t) =
   in
   { PIC.sha1; kind }
 
-let rec to_pic_i ~version ~index ~ba (pos, sha1, t) =
+let rec unpack ~version ~index ~ba (pos, t) =
   let ba_len = Bigarray.Array1.dim ba in
-  Log.debugf "to_pic_i ba_len:%d" ba_len;
+  Log.debugf "unpack ba_len:%d" ba_len;
   let input_packed_value =
     match version with
     | 2 -> V2.input
     | 3 -> V3.input
     | _ -> 
 	eprintf "pack version should be 2 or 3";
-	failwith "Packed_value.to_pic_i"
+	failwith "Packed_value.unpack"
   in
-  let kind = 
+  let unpacked = 
     match t with
-    | Raw_value x -> PIC.Raw x
+    | Raw_value x -> x
     | Ref_delta d -> begin 
-        match SHA1.Map.find index.Pack_index.offsets d.source with
+        match index#find_offset (* SHA1.Map.find index.Pack_index.offsets *) d.source with
         | Some offset -> begin
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~ba (offset, d.source, packed_v) in
-            PIC.Link { d with source = pic }
+	    let u = unpack ~version ~index ~ba (offset, packed_v) in
+	    Misc.with_buffer (fun b -> add_delta b {d with source = u})
         end
         | None -> begin
             eprintf
-              "Packed_value.to_pic_i: shallow pack are not supported.\n%s is not in the pack file!\n"
+              "Packed_value.unpack: shallow pack are not supported.\n%s is not in the pack file!\n"
               (SHA1.to_hex d.source);
-            failwith "Packed_value.to_pic_i";
+            failwith "Packed_value.unpack";
         end
     end
     | Off_delta d -> begin
         let offset = pos - d.source in
-        Log.debugf "to_pic_i offset:%d" offset;
-        match Int.Map.find index.Pack_index.inv_offsets offset with
-        | Some _sha1 -> begin
-            let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
-            let packed_v = input_packed_value buf in
-            let pic = to_pic_i ~version ~index ~ba (offset, _sha1, packed_v) in
-            PIC.Link { d with source = pic }
-        end
-        | None     -> begin
-            eprintf "cannot find offest %d in the index\n" offset;
-            failwith "Packed_value.to_pic_i"
-        end
+        Log.debugf "unpack offset:%d" offset;
+        let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
+        let packed_v = input_packed_value buf in
+	let u = unpack ~version ~index ~ba (offset, packed_v) in
+	Misc.with_buffer (fun b -> add_delta b {d with source = u})
     end
   in
-  { PIC.sha1; kind }
+  unpacked
+
+let to_value ~version ~index ~ba (offset, packed_v) =
+  let u = unpack ~version ~index ~ba (offset, packed_v) in
+  Value.input_inflated (Mstruct.of_string u)
+
 
 (* XXX: merge with PIC.unpack *)
 let add_inflated_value_aux (return, bind) ~read ~offsets ~pos buf = function
