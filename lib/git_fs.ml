@@ -251,9 +251,10 @@ module Packed = struct
   let read_in_pack t pack_sha1 sha1 =
     Log.debugf "read_in_pack %s:%s"
       (SHA1.to_hex pack_sha1) (SHA1.to_hex sha1);
-    if not (mem_in_pack t pack_sha1 sha1) then
-      return_none
-    else begin
+
+    let index = read_index_c t pack_sha1 in
+
+    if index#mem sha1 then begin
       match Hashtbl.find packs sha1 with
       | Some pack -> 
 	  Log.debugf "read_in_pack pack cache hit!";
@@ -262,7 +263,6 @@ module Packed = struct
           match Hashtbl.find pack_ba_cache pack_sha1 with
           | Some ba -> begin
 	      Log.debugf "read_in_pack ba cache hit!";
-	      let index = read_index_c t pack_sha1 in
 	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
 	      return v_opt
           end
@@ -271,10 +271,6 @@ module Packed = struct
 	      if Sys.file_exists file then begin
 	        let ba = Git_unix.read_file file in
                 Hashtbl.add_exn pack_ba_cache ~key:pack_sha1 ~data:ba;
-	        let index = read_index_c t pack_sha1 in
-(*
-	    read_index t pack_sha1 >>= fun index ->
-*)
 	        let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
 	        return v_opt
 	      end 
@@ -286,6 +282,8 @@ module Packed = struct
           end
       end
     end
+    else
+      return_none
 
   let values = SHA1.Table.create ()
 

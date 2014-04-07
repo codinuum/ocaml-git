@@ -273,33 +273,26 @@ let ls_tree = {
     run begin
       S.create () >>= fun t ->
 
-	let tree_of_commit sha1 =
-	  S.read_exn t sha1 >>= fun v ->
-	    match v with
-	    | Value.Commit c -> return (SHA1.of_tree c.Commit.tree)
-	    | _ -> raise (Invalid_argument "tree_of_commit")
-	in
-
         let get_kind = function
           | `Dir -> "tree", true
           | `Commit -> "commit", false
           | _ -> "blob", false
         in
 
-        let rec walk path sha1 =
+        let rec walk recurse path sha1 =
           S.read_exn t sha1 >>= fun v -> begin
             match v with
             | Value.Blob blob -> 
-                printf "blob %s %s\n" (SHA1.to_hex sha1) path;
+                printf "blob %s %s\n%!" (SHA1.to_hex sha1) path;
                 return_unit
             | Value.Tree tree -> begin
                 Lwt_list.iter_s
                   (fun e -> 
                     let path' = Filename.concat path e.Tree.name in
                     let kind, is_dir = get_kind e.Tree.perm in
-                    printf "%s %s %s\n" kind (SHA1.to_hex e.Tree.node) path';
-                    if is_dir then
-                      walk path' e.Tree.node
+                    printf "%s %s %s\n%!" kind (SHA1.to_hex e.Tree.node) path';
+                    if is_dir && recurse then
+                      walk recurse path' e.Tree.node
                     else
                       return_unit
                   ) tree
@@ -309,33 +302,14 @@ let ls_tree = {
                 return_unit
             | Value.Commit commit ->
                 printf "commit %s %s\n" (SHA1.to_hex sha1) path;
-                return_unit
+                walk recurse path (SHA1.of_tree commit.Commit.tree)
           end
         in
 
         catch
           (fun () ->
-            let commit_sha1 = SHA1.of_hex oid in
-
-            if recurse_flag then begin
-              tree_of_commit commit_sha1 >>= fun tree_sha1 ->
-                walk "" tree_sha1
-            end
-            else begin
-              tree_of_commit commit_sha1 >>= fun tree_sha1 ->
-                S.read_exn t tree_sha1 >>= fun v -> begin
-                  match v with
-                  | Value.Tree tree -> 
-                      List.iter 
-                        ~f:(fun e -> 
-                          let kind, is_dir = get_kind e.Tree.perm in
-                          printf "%s %s %s\n" kind (SHA1.to_hex e.Tree.node) e.Tree.name
-                           ) 
-                        tree
-                  | _ -> ()
-                end;
-                return_unit
-            end
+            let sha1 = SHA1.of_hex oid in
+            walk recurse_flag "" sha1
           )
           (fun exn -> 
 	    printf "[WARNING] %s\n%s\n" (Exn.to_string exn) (Exn.backtrace());
