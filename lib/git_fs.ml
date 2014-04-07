@@ -220,7 +220,7 @@ module Packed = struct
       end
       else begin
         Printf.eprintf "No file associated with the pack object %s.\n" (SHA1.to_hex sha1);
-        fail (Failure "read_pack")
+        fail (Failure "Git_fs.Packed.read_pack")
       end
 
   let write_pack t sha1 pack =
@@ -246,6 +246,8 @@ module Packed = struct
     SHA1.Map.mem idx.Pack_index.offsets sha1
 *)
 
+  let pack_ba_cache = SHA1.Table.create ()
+
   let read_in_pack t pack_sha1 sha1 =
     Log.debugf "read_in_pack %s:%s"
       (SHA1.to_hex pack_sha1) (SHA1.to_hex sha1);
@@ -256,22 +258,33 @@ module Packed = struct
       | Some pack -> 
 	  Log.debugf "read_in_pack pack cache hit!";
 	  return (Pack.read pack sha1)
-      | None      ->
-	  let file = file t pack_sha1 in
-	  if Sys.file_exists file then begin
-	    let ba = Git_unix.read_file file in
-	    let index = read_index_c t pack_sha1 in
+      | None      -> begin
+          match Hashtbl.find pack_ba_cache pack_sha1 with
+          | Some ba -> begin
+	      Log.debugf "read_in_pack ba cache hit!";
+	      let index = read_index_c t pack_sha1 in
+	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
+	      return v_opt
+          end
+          | None -> begin
+	      let file = file t pack_sha1 in
+	      if Sys.file_exists file then begin
+	        let ba = Git_unix.read_file file in
+                Hashtbl.add_exn pack_ba_cache ~key:pack_sha1 ~data:ba;
+	        let index = read_index_c t pack_sha1 in
 (*
 	    read_index t pack_sha1 >>= fun index ->
 *)
-	      let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
-	      return v_opt
-	  end 
-	  else begin
-	    Printf.eprintf 
-	      "No file associated with the pack object %s.\n" (SHA1.to_hex pack_sha1);
-	    fail (Failure "read_in_pack")
-	  end
+	        let v_opt = Pack.Raw.read (Mstruct.of_bigarray ba) index sha1 in
+	        return v_opt
+	      end 
+	      else begin
+	        Printf.eprintf 
+	          "No file associated with the pack object %s.\n" (SHA1.to_hex pack_sha1);
+	        fail (Failure "read_in_pack")
+	      end
+          end
+      end
     end
 
   let values = SHA1.Table.create ()
