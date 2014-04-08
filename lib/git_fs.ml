@@ -292,32 +292,47 @@ module Packed = struct
 
   let read t sha1 =
     match SHA1.Table.find values sha1 with
-    | Some v -> 
+    | Some v -> begin
 	Log.debugf "read cache hit!";
 	return (Some v)
+    end
     | None   ->
       begin match Value.Cache.find sha1 with
         | Some str -> return (Some (Value.input_inflated (Mstruct.of_string str)))
         | None     ->
-          list t >>= fun packs ->
-          Lwt_list.fold_left_s (fun acc pack ->
+            list t >>= fun packs -> begin
+
+              Lwt_list.map_p (fun pack -> read_in_pack t pack sha1) packs >>= fun l ->
+
+                match List.filter ~f:(function Some _ -> true | None -> false) l with
+                | v_opt::_ -> return v_opt
+                | []       -> return_none
+(*
+            Lwt_list.fold_left_s (fun acc pack ->
               match acc with
               | Some v -> return (Some v)
               | None   -> read_in_pack t pack sha1
             ) None packs
+*)
+          end
       end >>= function
       | None   -> return_none
       | Some v ->
-(*        ignore (SHA1.Table.add values ~key:sha1 ~data:v); *)
-        return (Some v)
+(*
+          let _ = SHA1.Table.add values ~key:sha1 ~data:v in
+*)
+          return (Some v)
 
   let mem t sha1 =
     list t >>= fun packs ->
+      Lwt_list.exists_p (fun pack -> return (mem_in_pack t pack sha1)) packs
+(*
     let mem =
       List.fold_left ~f:(fun acc pack ->
           acc || mem_in_pack t pack sha1
         ) ~init:false packs in
     return mem
+*)
 
 end (* of module Git_fs.Packed *)
 
