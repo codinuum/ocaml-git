@@ -215,23 +215,7 @@ let add buf t =
 
 
 
-let int_of_hex hex =
-  let digit c =
-    match c with
-    | '0'..'9' -> Char.to_int c - Char.to_int '0'
-    | 'A'..'F' -> Char.to_int c - Char.to_int 'A' + 10
-    | 'a'..'f' -> Char.to_int c - Char.to_int 'a' + 10
-    | c ->
-      let msg = Printf.sprintf "Pack_index.int_of_hex: %S is invalid" (String.make 1 c) in
-      raise (Invalid_argument msg) 
-  in
-  let n = String.length hex in
-  let result = ref 0 in
-  for i = 0 to n - 1 do
-    result := !result + (digit hex.[i]) * (Int.of_float (16. ** (float (n - 1 - i))))
-  done;
-  !result
-
+let int_of_hex hex = Int.of_string ("0x" ^ hex)
 
 class type c_t = object
   method find_offset : SHA1.t -> int option
@@ -255,16 +239,15 @@ class offset_cache size = object (self)
     end
 
   method find (sha1 : SHA1.t) =
-    Log.debugf "offset_cache#add: %s" (SHA1.to_hex sha1);
+    Log.debugf "offset_cache#find: %s" (SHA1.to_hex sha1);
     SHA1.Table.find tbl sha1
 
 end (* of class Pack_index.offset_cache *)
 
-class c (ba : Cstruct.buffer) = object (self)
 
-  val scan_thresh = 8
+class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
 
-  val cache = new offset_cache 1
+  val cache = new offset_cache cache_size
 
   val mutable fanout_ofs  = 0
   val mutable sha1s_ofs   = 0
@@ -380,17 +363,13 @@ class c (ba : Cstruct.buffer) = object (self)
         Log.debugf "c#get_sha1_idx: not found";
         None
 
-  method private get_fanout_idx ?(verbose=true) ?(n=0) sha1 =
-    if Int.(n > 19) then
-      let msg = Printf.sprintf "Pack_index.c#get_funout_idx: n=%d" n in
-      raise (Invalid_argument msg)
-    else
-      let hex = SHA1.to_hex sha1 in
-      let hd = String.sub hex (n * 2) 2 in
-      let fanout_idx = int_of_hex hd in
-      if verbose then
-        Log.debugf "c#get_fanout_idx: %s(%d) -> %s -> %d" hex n hd fanout_idx;
-      fanout_idx
+  method private get_fanout_idx ?(verbose=true) sha1 =
+    let hex = SHA1.to_hex sha1 in
+    if verbose then Log.debugf "c#get_fanout_idx: %s" hex;
+    let h = String.sub hex 0 2 in
+    let fanout_idx = int_of_hex h in
+    if verbose then Log.debugf "c#get_fanout_idx: %s -> %d" h fanout_idx;
+    fanout_idx
 
   (* implements binary search *)
   method private scan_sha1s fo_idx idx_ofs ofs n sha1 =
@@ -421,9 +400,9 @@ class c (ba : Cstruct.buffer) = object (self)
         Log.debugf "c#scan_sha1s: scanning...";
         for i = 0 to n - 1 do
           let s = SHA1.input buf in
-
+(*
           assert (Int.(self#get_fanout_idx ~verbose:false s = fo_idx));
-
+*)
           if SHA1.(s = sha1) then begin
             idx := idx_ofs + i;
             Log.debugf "c#scan_sha1s: idx -> %d" !idx;
@@ -436,23 +415,33 @@ class c (ba : Cstruct.buffer) = object (self)
     with
       Exit -> Some !idx
 
-  method private le_sha1 s0 s1 =
-    Log.debugf "c#le_sha1: %s < %s?" (SHA1.to_hex s0) (SHA1.to_hex s1);
-    let b = ref false in
-    try
-      for n = 1 to 19 do
-        let x0 = self#get_fanout_idx ~n s0 in
-        let x1 = self#get_fanout_idx ~n s1 in
-        if Int.(x0 < x1) then begin
-          b := true;
-          raise Exit
-        end
-        else if Int.(x0 > x1) then begin
-          raise Exit
-        end
-      done;
-      false
-    with
-      Exit -> !b
-      
+  method private le_sha1 ?(nb=2) s0 s1 =
+    let hex0 = SHA1.to_hex s0 in
+    let hex1 = SHA1.to_hex s1 in
+    Log.debugf "c#le_sha1: nb:%d (%s)<(%s)?" nb hex0 hex1;
+
+    let len = String.length hex0 in
+
+    assert (Int.(len = String.length hex1));
+
+    let w = nb * 2 in
+
+    let rec scan st =
+      if Int.(st >= len) then
+        assert false
+      else
+        let a = Int.(min w (len - st)) in
+        let x0 = int_of_hex (String.sub hex0 st a) in
+        let x1 = int_of_hex (String.sub hex1 st a) in
+        if Int.(x0 < x1) then
+          true
+        else if Int.(x0 > x1) then
+          false
+        else
+          scan (st + w)
+    in
+    let b = scan 1 in
+    Log.debugf "c#le_sha1: -> %B" b;
+    b
+
 end (* Pack_index.c *)

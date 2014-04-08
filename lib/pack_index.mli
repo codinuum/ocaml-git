@@ -49,4 +49,4 @@ class type c_t = object
   method mem         : SHA1.t -> bool
 end
 
-class c : Cstruct.buffer -> c_t
+class c : ?scan_thresh:int -> ?cache_size:int -> Cstruct.buffer -> c_t
