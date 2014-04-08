@@ -256,9 +256,10 @@ module Packed = struct
 
     if index#mem sha1 then begin
       match Hashtbl.find packs sha1 with
-      | Some pack -> 
+      | Some pack -> begin
 	  Log.debugf "read_in_pack pack cache hit!";
 	  return (Pack.read pack sha1)
+      end
       | None      -> begin
           match Hashtbl.find pack_ba_cache pack_sha1 with
           | Some ba -> begin
@@ -282,8 +283,10 @@ module Packed = struct
           end
       end
     end
-    else
+    else begin
+      Log.debugf "read_in_pack: not found";
       return_none
+    end
 
   let values = SHA1.Table.create ()
 
@@ -316,7 +319,7 @@ module Packed = struct
         ) ~init:false packs in
     return mem
 
-end
+end (* of module Git_fs.Packed *)
 
 module Log = Log.Make(struct let section = "fs" end)
 
