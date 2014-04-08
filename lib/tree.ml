@@ -71,7 +71,7 @@ let string_of_perm = function
   | `Normal -> "100644"
   | `Exec   -> "100755"
   | `Link   -> "120000"
-  | `Dir    -> "40000"
+  | `Dir    -> "040000"
   | `Commit -> "160000"
 
 let add_entry buf e =

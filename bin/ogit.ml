@@ -274,35 +274,39 @@ let ls_tree = {
       S.create () >>= fun t ->
 
         let get_kind = function
-          | `Dir -> "tree", true
+          | `Dir    -> "tree",   true
           | `Commit -> "commit", false
-          | _ -> "blob", false
+          | _       -> "blob",   false
         in
 
         let rec walk recurse path sha1 =
           S.read_exn t sha1 >>= fun v -> begin
             match v with
-            | Value.Blob blob -> 
+            | Value.Blob blob -> begin
                 printf "blob %s %s\n%!" (SHA1.to_hex sha1) path;
                 return_unit
+            end
             | Value.Tree tree -> begin
                 Lwt_list.iter_s
                   (fun e -> 
                     let path' = Filename.concat path e.Tree.name in
                     let kind, is_dir = get_kind e.Tree.perm in
-                    printf "%s %s %s\n%!" kind (SHA1.to_hex e.Tree.node) path';
+                    let mode = Tree.string_of_perm e.Tree.perm in
+                    printf "%s %s %s\t%s\n%!" mode kind (SHA1.to_hex e.Tree.node) path';
                     if is_dir && recurse then
                       walk recurse path' e.Tree.node
                     else
                       return_unit
                   ) tree
             end
-            | Value.Tag tag ->
+            | Value.Tag tag -> begin
                 printf "tag %s %s\n" (SHA1.to_hex sha1) path;
                 return_unit
-            | Value.Commit commit ->
+            end
+            | Value.Commit commit -> begin
                 printf "commit %s %s\n" (SHA1.to_hex sha1) path;
                 walk recurse path (SHA1.of_tree commit.Commit.tree)
+            end
           end
         in
 
