@@ -364,11 +364,8 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
         None
 
   method private get_fanout_idx ?(verbose=true) sha1 =
-    let hex = SHA1.to_hex sha1 in
-    if verbose then Log.debugf "c#get_fanout_idx: %s" hex;
-    let h = String.sub hex 0 2 in
-    let fanout_idx = int_of_hex h in
-    if verbose then Log.debugf "c#get_fanout_idx: %s -> %d" h fanout_idx;
+    let s = SHA1.to_string sha1 in
+    let fanout_idx = int_of_char s.[0] in
     fanout_idx
 
   (* implements binary search *)
@@ -415,30 +412,26 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
     with
       Exit -> Some !idx
 
-  method private le_sha1 ?(nb=2) s0 s1 =
-    let hex0 = SHA1.to_hex s0 in
-    let hex1 = SHA1.to_hex s1 in
-    Log.debugf "c#le_sha1: nb:%d (%s)<(%s)?" nb hex0 hex1;
-
-    let len = String.length hex0 in
-
-    assert (Int.(len = String.length hex1));
-
-    let w = nb * 2 in
-
-    let rec scan st =
-      if Int.(st >= len) then
-        assert false
+  method private le_sha1 sha1_0 sha1_1 =
+    let s0 = SHA1.to_string sha1_0 in
+    let s1 = SHA1.to_string sha1_1 in
+(*
+    let len = String.length s0 in
+    assert (Int.(len = String.length s1));
+    let max = len - 1 in
+*)
+    let rec scan i =
+(*
+      assert (i <= max);
+*)
+      let x0 = int_of_char s0.[i] in
+      let x1 = int_of_char s1.[i] in
+      if Int.(x0 < x1) then
+        true
+      else if Int.(x0 > x1) then
+        false
       else
-        let a = Int.(min w (len - st)) in
-        let x0 = int_of_hex (String.sub hex0 st a) in
-        let x1 = int_of_hex (String.sub hex1 st a) in
-        if Int.(x0 < x1) then
-          true
-        else if Int.(x0 > x1) then
-          false
-        else
-          scan (st + w)
+        scan (i + 1)
     in
     let b = scan 1 in
     Log.debugf "c#le_sha1: -> %B" b;
