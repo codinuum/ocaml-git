@@ -19,11 +19,17 @@ module Log = Log.Make(struct let section = "misc" end)
 
 module C = Cryptokit
 
+exception Bad_encoding of string
+
 let hex_encode s = 
   C.transform_string (C.Hexa.encode()) s
 
 let hex_decode s =
-  C.transform_string (C.Hexa.decode()) s
+  try
+    C.transform_string (C.Hexa.decode()) s
+  with
+    C.Error C.Bad_encoding ->
+      raise (Bad_encoding s)
 
 (* From Zlib *)
 module Zlib_ext = struct
