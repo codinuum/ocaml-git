@@ -439,7 +439,7 @@ let to_pic offsets sha1s (pos, sha1, t) =
 
 let rec unpack ~version ~index ~ba (pos, t) =
   let ba_len = Bigarray.Array1.dim ba in
-  Log.debugf "unpack ba_len:%d" ba_len;
+  Log.debugf "unpack: ba: len=%d" ba_len;
   let input_packed_value =
     match version with
     | 2 -> V2.input
@@ -467,8 +467,9 @@ let rec unpack ~version ~index ~ba (pos, t) =
         end
     end
     | Off_delta d -> begin
+        Log.debugf "unpack: Off_delta d: d.source=%d" d.source;
         let offset = pos - d.source in
-        Log.debugf "unpack offset:%d" offset;
+        Log.debugf "unpack: offset=%d-%d=%d" pos d.source offset;
         let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
         let packed_v = input_packed_value buf in
 	let u = unpack ~version ~index ~ba (offset, packed_v) in

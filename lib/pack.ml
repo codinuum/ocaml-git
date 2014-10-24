@@ -148,11 +148,15 @@ let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
       match index#find_offset sha1 with
       | Some offset -> begin
           Log.debugf "read: offset=%d" offset;
-          let orig_pos = Mstruct.offset buf in
-          Mstruct.shift buf (offset - orig_pos);
-          let packed_v = input_packed_value version buf in
+          let orig_off = Mstruct.offset buf in
+          let orig_len = Mstruct.length buf in
+          Log.debugf "read: buf: orig_off=%d orig_len=%d" orig_off orig_len;
 	  let ba = Mstruct.to_bigarray buf in
-	  Some (Packed_value.to_value ~version ~index ~ba (offset, packed_v))
+          Mstruct.shift buf (offset - orig_off);
+          Log.debugf "read: buf: off=%d len=%d (after shift:%d)" (Mstruct.offset buf) (Mstruct.length buf) (offset-orig_off);
+          let packed_v = input_packed_value version buf in
+          Log.debugf "read: buf: off=%d len=%d (after input_packed_value)" (Mstruct.offset buf) (Mstruct.length buf);
+	  Some (Packed_value.to_value ~version ~index ~ba (offset-orig_off, packed_v))
       end
       | None -> None
     end
