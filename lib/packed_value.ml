@@ -268,6 +268,8 @@ module Make (M: sig val version: int end) = struct
         low lor (ss lsl 4)
       else low in
 
+    Log.debugf "input: kind:%d size:%d (more=%b)" kind size more;
+
     let mk typ str =
       let size = Bigstring.length str in
       let buf = Misc.with_buffer (fun buf ->
@@ -275,8 +277,6 @@ module Make (M: sig val version: int end) = struct
           Bigbuffer.add_string buf (Bigstring.to_string str)
         ) in
       Raw_value buf in
-
-    Log.debugf "input kind:%d size:%d (%b)" kind size more;
 
     match kind with
     | 0b000 -> Mstruct.parse_error "invalid: 0 is reserved"
@@ -437,9 +437,9 @@ let to_pic offsets sha1s (pos, sha1, t) =
   in
   { PIC.sha1; kind }
 
-let rec unpack ~version ~index ~ba (pos, t) =
+let rec unpack ?(lv=0) ~version ~index ~ba (pos, t) =
   let ba_len = Bigarray.Array1.dim ba in
-  Log.debugf "unpack: ba: len=%d" ba_len;
+  Log.debugf "unpack[%d]: ba_len=%d" lv ba_len;
   let input_packed_value =
     match version with
     | 2 -> V2.input
@@ -450,13 +450,19 @@ let rec unpack ~version ~index ~ba (pos, t) =
   in
   let unpacked = 
     match t with
-    | Raw_value x -> x
+    | Raw_value x -> begin
+        Log.debugf "unpack[%d]: Raw_value" lv; 
+        x
+    end
     | Ref_delta d -> begin 
+        Log.debugf "unpack[%d]: Ref_delta: d.source=%s" lv (SHA1.to_hex d.source);
         match index#find_offset (* SHA1.Map.find index.Pack_index.offsets *) d.source with
         | Some offset -> begin
+            Log.debugf "unpack[%d]: offset=%d" lv offset;
+            let offset = offset - 12 in (* header skipped *) 
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
-	    let u = unpack ~version ~index ~ba (offset, packed_v) in
+	    let u = unpack ~lv:(lv+1) ~version ~index ~ba (offset, packed_v) in
 	    Misc.with_buffer (fun b -> add_delta b {d with source = u})
         end
         | None -> begin
@@ -467,12 +473,12 @@ let rec unpack ~version ~index ~ba (pos, t) =
         end
     end
     | Off_delta d -> begin
-        Log.debugf "unpack: Off_delta d: d.source=%d" d.source;
+        Log.debugf "unpack[%d]: Off_delta: d.source=%d" lv d.source;
         let offset = pos - d.source in
-        Log.debugf "unpack: offset=%d-%d=%d" pos d.source offset;
+        Log.debugf "unpack[%d]: offset=%d-%d=%d" lv pos d.source offset;
         let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
         let packed_v = input_packed_value buf in
-	let u = unpack ~version ~index ~ba (offset, packed_v) in
+	let u = unpack ~lv:(lv+1) ~version ~index ~ba (offset, packed_v) in
 	Misc.with_buffer (fun b -> add_delta b {d with source = u})
     end
   in
