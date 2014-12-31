@@ -58,7 +58,7 @@ let write t value =
   match Hashtbl.find t.values sha1 with
   | Some _ -> return sha1
   | None   ->
-    Log.infof "Writing %s" (SHA1.to_hex sha1);
+    Log.info "Writing %s" (SHA1.to_hex sha1);
     Hashtbl.add_exn t.values sha1 value;
     return sha1
 
@@ -95,7 +95,7 @@ let type_of t sha1 =
   | Some v -> return (Some (Value.type_of v))
 
 let contents t =
-  Log.debugf "contents";
+  Log.debug "contents";
   list t >>= fun sha1s ->
   Lwt_list.map_s (fun sha1 ->
       read_exn t sha1 >>= fun value ->
@@ -117,11 +117,11 @@ let mem_reference t ref =
   return (Hashtbl.mem t.refs ref)
 
 let read_reference t ref =
-  Log.infof "Reading %s" (Reference.to_string ref);
+  Log.info "Reading %s" (Reference.to_string ref);
   return (Hashtbl.find t.refs ref)
 
 let read_head t =
-  Log.infof "Reading HEAD";
+  Log.info "Reading HEAD";
   return t.head
 
 let remove_reference t ref =
@@ -134,12 +134,12 @@ let read_reference_exn t ref =
   | Some s -> return s
 
 let write_head t c =
-  Log.infof "Writing HEAD";
+  Log.info "Writing HEAD";
   t.head <- Some c;
   return_unit
 
 let write_reference t ref sha1 =
-  Log.infof "Writing %s" (Reference.to_string ref);
+  Log.info "Writing %s" (Reference.to_string ref);
   Hashtbl.replace t.refs ref sha1;
   return_unit
 

@@ -62,7 +62,7 @@ let add_header buf typ size =
   Bigbuffer.add_char   buf Misc.nul
 
 let add_inflated buf t =
-  Log.debugf "add_inflated";
+  Log.debug "add_inflated";
   let tmp = Bigbuffer.create 1024 in
   add_contents tmp t;
   let size = Bigbuffer.length tmp in
@@ -74,7 +74,7 @@ let sha1 t =
   SHA1.create buf
 
 let add buf t =
-  Log.debugf "add %s" (to_string t);
+  Log.debug "add %s" (to_string t);
   let inflated = Misc.with_bigbuffer (fun buf -> add_inflated buf t) in
   let deflated = Misc.deflate_bigstring inflated in
   Bigbuffer.add_string buf (Bigstring.to_string deflated)

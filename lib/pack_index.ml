@@ -61,7 +61,7 @@ let id_monad =
   (fun x -> x), (fun x f -> f x)
 
 let lengths { offsets } =
-  Log.debugf "lengths";
+  Log.debug "lengths";
   let rec aux acc = function
     | []    -> List.rev acc
     | [h,_] -> aux ((h, None)::acc) []
@@ -79,7 +79,7 @@ let input_header buf =
     Mstruct.parse_error_buf buf "wrong index version (%ld)" version
 
 let input_keys buf n =
-  Log.debugf "input: reading the %d object IDs" n;
+  Log.debug "input: reading the %d object IDs" n;
   let a = Array.create n (SHA1.of_string "") in
   for i=0 to n - 1 do
     a.(i) <- SHA1.input buf;
@@ -87,17 +87,17 @@ let input_keys buf n =
   a
 
 let keys buf =
-  Log.debugf "keys";
+  Log.debug "keys";
   input_header buf;
   Mstruct.shift buf (255 * 4);
   let n = Mstruct.get_be_uint32 buf in
   SHA1.Set.of_array (input_keys buf (Int32.to_int_exn n))
 
 let input buf =
-  Log.debugf "input";
+  Log.debug "input";
   input_header buf;
   (* Read the first-level fanout *)
-  Log.debugf "input: reading the first-level fanout";
+  Log.debug "input: reading the first-level fanout";
   let fanout =
     let a = Array.create 256 0l in
     for i=0 to 255 do
@@ -111,7 +111,7 @@ let input buf =
   let names = input_keys buf nb_objects in
 
   (* Read the CRCs *)
-  Log.debugf "input: reading the %d CRCs" nb_objects;
+  Log.debug "input: reading the %d CRCs" nb_objects;
   let crcs =
     Array.foldi names ~init:SHA1.Map.empty 
       ~f:
@@ -120,7 +120,7 @@ let input buf =
       )
   in
   (* Read the offsets *)
-  Log.debugf "input: reading the %d offsets" nb_objects;
+  Log.debug "input: reading the %d offsets" nb_objects;
   let conts = ref [] in
   let offsets =
     Array.foldi names ~init:SHA1.Map.empty
@@ -143,7 +143,7 @@ let input buf =
 	  SHA1.Map.add m ~key:name ~data:o
       )
   in
-  Log.debugf "input: reading the %d large offsets" (List.length !conts);
+  Log.debug "input: reading the %d large offsets" (List.length !conts);
   let offsets =
     List.fold_left !conts ~init:offsets
       ~f:
@@ -159,7 +159,7 @@ let input buf =
 
 let add buf t =
   let n = SHA1.Map.length t.offsets in
-  Log.debugf "output: %d packed values" n;
+  Log.debug "output: %d packed values" n;
   Bigbuffer.add_string buf "\255tOc";
   Misc.add_be_uint32 buf 2l;
 
@@ -168,7 +168,7 @@ let add buf t =
   let offsets = List.sort ~cmp (SHA1.Map.to_alist t.offsets) in
   let crcs    = List.sort ~cmp (SHA1.Map.to_alist t.crcs) in
 
-  Log.debugf "output: writing the first-level fanout";
+  Log.debug "output: writing the first-level fanout";
   let fanout = Array.create 256 0l in
   List.iter ~f:(fun (key, _) ->
       let str = SHA1.to_string key in
@@ -179,17 +179,17 @@ let add buf t =
     ) offsets;
   Array.iter ~f:(Misc.add_be_uint32 buf) fanout;
 
-  Log.debugf "output: writing the %d object IDs" n;
+  Log.debug "output: writing the %d object IDs" n;
   List.iter ~f:(fun (key, _) ->
       SHA1.add buf key
     ) offsets;
 
-  Log.debugf "output: writing the %d CRCs" n;
+  Log.debug "output: writing the %d CRCs" n;
   List.iter ~f:(fun (_, crc) ->
       Misc.add_be_uint32 buf crc
     ) crcs;
 
-  Log.debugf "output: writing the %d offsets" n;
+  Log.debug "output: writing the %d offsets" n;
   let conts = ref [] in
   List.iter ~f:(fun (_, offset) ->
       match Int32.of_int offset with
@@ -199,7 +199,7 @@ let add buf t =
         Misc.add_be_uint32 buf 0x80_00_00_00l
     ) offsets;
 
-  Log.debugf "output: writing the %d offset continuations" (List.length !conts);
+  Log.debug "output: writing the %d offset continuations" (List.length !conts);
   let str = String.create 8 in
   List.iter ~f:(fun cont ->
       EndianString.BigEndian.set_int64 str 0 cont;
@@ -227,20 +227,20 @@ class offset_cache size = object (self)
   val tbl = SHA1.Table.create ()
 
   method add (sha1 : SHA1.t) (offset : int) =
-    Log.debugf "offset_cache#add: %s -> %d" (SHA1.to_hex sha1) offset;
+    Log.debug "offset_cache#add: %s -> %d" (SHA1.to_hex sha1) offset;
     Queue.enqueue keyq sha1;
     let _ = SHA1.Table.add tbl ~key:sha1 ~data:offset in
     let qsz = Queue.length keyq in
     if Int.(qsz > size) then begin
       match Queue.dequeue keyq with
       | Some k -> 
-          Log.debugf "offset_cache#add: qsz=%d shrinking..." qsz;
+          Log.debug "offset_cache#add: qsz=%d shrinking..." qsz;
           SHA1.Table.remove tbl k
       | None -> ()
     end
 
   method find (sha1 : SHA1.t) =
-    Log.debugf "offset_cache#find: %s" (SHA1.to_hex sha1);
+    Log.debug "offset_cache#find: %s" (SHA1.to_hex sha1);
     SHA1.Table.find tbl sha1
 
 end (* of class Pack_index.offset_cache *)
@@ -266,11 +266,11 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
 
 
   method find_offset sha1 =
-    Log.debugf "c#find_offset: %s" (SHA1.to_hex sha1);
+    Log.debug "c#find_offset: %s" (SHA1.to_hex sha1);
 
     match cache#find sha1 with
     | Some o -> begin
-        Log.debugf "c#find_offset: cache hit!";
+        Log.debug "c#find_offset: cache hit!";
         Some o
     end
     | None -> begin
@@ -286,7 +286,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
               | _ -> true 
             in
             if is64 then begin
-              Log.debugf "c#find_offset: 64bit offset";
+              Log.debug "c#find_offset: 64bit offset";
 
               let size64 =
                 match ofs64_size with
@@ -298,7 +298,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
               | Some idx64 -> begin
                   Mstruct.shift buf64 (idx64 * 8);
                   let o64 = Int64.to_int_exn (Mstruct.get_be_uint64 buf64) in
-                  Log.debugf "c#find_offset: found:%d" o64;
+                  Log.debug "c#find_offset: found:%d" o64;
                   cache#add sha1 o64;
                   Some o64
               end
@@ -307,7 +307,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
             else begin
               Mstruct.shift buf (-1);
               let o = Int32.to_int_exn (Mstruct.get_be_uint32 buf) in
-              Log.debugf "c#find_offset: found:%d" o;
+              Log.debug "c#find_offset: found:%d" o;
               cache#add sha1 o;
               Some o
             end
@@ -316,13 +316,13 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
     end
 
   method mem sha1 =
-    Log.debugf "c#mem: %s" (SHA1.to_hex sha1);
+    Log.debug "c#mem: %s" (SHA1.to_hex sha1);
     match self#find_offset sha1 with
     | Some o -> 
-        Log.debugf "c#mem: true"; 
+        Log.debug "c#mem: true"; 
         true
     | None -> 
-        Log.debugf "c#mem: false"; 
+        Log.debug "c#mem: false"; 
         false
 
 
@@ -333,35 +333,35 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
 
     (* fanout table *)
     fanout_ofs <- Mstruct.offset buf;
-    Log.debugf "c#<init>: entering fanout table (ofs=%d)" fanout_ofs;
+    Log.debug "c#<init>: entering fanout table (ofs=%d)" fanout_ofs;
     Mstruct.shift buf (255 * 4);
     n_sha1s <- Int32.to_int_exn (Mstruct.get_be_uint32 buf);
     n_sha1s_4 <- n_sha1s * 4;
     n_sha1s_20 <- n_sha1s * 20;
-    Log.debugf "c#<init>: n_sha1s:%d" n_sha1s;
+    Log.debug "c#<init>: n_sha1s:%d" n_sha1s;
 
     (* sha1 listing *)
     sha1s_ofs <- Mstruct.offset buf;
-    Log.debugf "c#<init>: entering sha1 listing (ofs=%d)" sha1s_ofs;
+    Log.debug "c#<init>: entering sha1 listing (ofs=%d)" sha1s_ofs;
     Mstruct.shift buf n_sha1s_20;
 
     (* crc checksums *)
     crcs_ofs <- Mstruct.offset buf;
-    Log.debugf "c#<init>: entering crc checksums (ofs=%d)" crcs_ofs;
+    Log.debug "c#<init>: entering crc checksums (ofs=%d)" crcs_ofs;
     Mstruct.shift buf n_sha1s_4;
 
     (* packfile offsets *)
     offsets_ofs <- Mstruct.offset buf;
-    Log.debugf "c#<init>: entering packfile offsets (ofs=%d)" offsets_ofs;
+    Log.debug "c#<init>: entering packfile offsets (ofs=%d)" offsets_ofs;
     Mstruct.shift buf n_sha1s_4;
 
     (* large packfile offsets *)
     ofs64_ofs <- Mstruct.offset buf;
-    Log.debugf "c#<init>: entering large packfile offsets (ofs=%d)" ofs64_ofs;
+    Log.debug "c#<init>: entering large packfile offsets (ofs=%d)" ofs64_ofs;
 
 
   method private get_sha1_idx sha1 =
-    Log.debugf "c#get_sha1_idx: %s" (SHA1.to_hex sha1);
+    Log.debug "c#get_sha1_idx: %s" (SHA1.to_hex sha1);
     let fo_idx = self#get_fanout_idx sha1 in
     let buf = Mstruct.of_bigarray ~off:fanout_ofs ~len:(256 * 4) ba in
     let sz0, n =
@@ -381,20 +381,20 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
       self#scan_sha1s fo_idx sz0 (sha1s_ofs + (sz0 * 20)) n sha1
     with
       Idx_found i -> 
-        Log.debugf "c#get_sha1_idx: found:%d" i;
+        Log.debug "c#get_sha1_idx: found:%d" i;
         Some i
 (*
     match self#scan_sha1s fo_idx sz0 (sha1s_ofs + (sz0 * 20)) n sha1 with
     | Some i ->
-        Log.debugf "c#get_sha1_idx: found:%d" i;
+        Log.debug "c#get_sha1_idx: found:%d" i;
         Some i
     | None ->
-        Log.debugf "c#get_sha1_idx: not found";
+        Log.debug "c#get_sha1_idx: not found";
         None
 *)
 
   method private create_ofs64_tbl =
-    Log.debugf "c#create_ofs64_tbl";
+    Log.debug "c#create_ofs64_tbl";
     let buf = Mstruct.of_bigarray ~off:offsets_ofs ~len:n_sha1s_4 ba in
     let count = ref 0 in
     for i = 0 to n_sha1s - 1 do
@@ -403,7 +403,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
         | 0 -> ()
         | _ -> 
             let _ = Int.Table.add ofs64_tbl ~key:i ~data:!count in
-            Log.debugf "c#create_ofs64_tbl: %d -> %d" i !count;
+            Log.debug "c#create_ofs64_tbl: %d -> %d" i !count;
             incr count
       end;
       Mstruct.shift buf 3
@@ -418,22 +418,22 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
 
   (* implements binary search *)
   method private scan_sha1s fo_idx idx_ofs ofs n sha1 =
-    Log.debugf "c#scan_sha1s: fo_idx:%d idx_ofs:%d ofs:%d n:%d" fo_idx idx_ofs ofs n;
+    Log.debug "c#scan_sha1s: fo_idx:%d idx_ofs:%d ofs:%d n:%d" fo_idx idx_ofs ofs n;
     let len = n * 20 in
     let buf = Mstruct.of_bigarray ~off:ofs ~len ba in
 (*
     try
 *)
       if Int.(n > scan_thresh) then begin
-        Log.debugf "c#scan_sha1s: %d > scan_thresh(=%d)" n scan_thresh;
+        Log.debug "c#scan_sha1s: %d > scan_thresh(=%d)" n scan_thresh;
         let p = n / 2 in
-        Log.debugf "c#scan_sha1s: p:%d" p;
+        Log.debug "c#scan_sha1s: p:%d" p;
         let len' = p * 20 in
         Mstruct.shift buf len';
         let s = SHA1.input buf in
         if SHA1.(s = sha1) then begin
           let idx = idx_ofs + p in
-          Log.debugf "c#scan_sha1s: idx -> %d" idx;
+          Log.debug "c#scan_sha1s: idx -> %d" idx;
           raise (Idx_found idx)
         end
         else if self#le_sha1 sha1 s then
@@ -443,7 +443,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
           self#scan_sha1s fo_idx (idx_ofs + d) (ofs + d * 20) (n - p - 1) sha1
       end
       else begin
-        Log.debugf "c#scan_sha1s: scanning...";
+        Log.debug "c#scan_sha1s: scanning...";
         self#scan_sub idx_ofs sha1 buf 0 (n - 1)
       end
 (*
@@ -462,7 +462,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
  *)
       if SHA1.(s = sha1) then begin
         let idx = idx_ofs + i in
-        Log.debugf "c#scan_sub: idx -> %d" idx;
+        Log.debug "c#scan_sub: idx -> %d" idx;
         raise (Idx_found idx)
       end
       else
@@ -491,7 +491,7 @@ class c ?(scan_thresh=8) ?(cache_size=1) (ba : Cstruct.buffer) = object (self)
         scan (i + 1)
     in
     let b = scan 1 in
-    Log.debugf "c#le_sha1: -> %B" b;
+    Log.debug "c#le_sha1: -> %B" b;
     b
 
 

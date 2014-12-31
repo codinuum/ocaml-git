@@ -54,11 +54,11 @@ module Make (IO: IO) (Store: Store.S) = struct
 
     let output oc = function
       | None  ->
-        Log.debugf "SENDING: FLUSH";
+        Log.debug "SENDING: FLUSH";
         IO.write oc "0000" >>= fun () ->
         IO.flush oc
       | Some l ->
-        Log.debugf "SENDING: %S" l;
+        Log.debug "SENDING: %S" l;
         let size = Printf.sprintf "%04x" (4 + String.length l) in
         IO.write oc size >>= fun () ->
         IO.write oc l    >>= fun () ->
@@ -71,16 +71,16 @@ module Make (IO: IO) (Store: Store.S) = struct
       output oc None
 
     let input ic =
-      Log.debugf "PacketLine.input";
+      Log.debug "PacketLine.input";
       IO.read_exactly ic 4 >>= fun size ->
       match size with
       | "0000" ->
-        Log.debugf "RECEIVED: FLUSH";
+        Log.debug "RECEIVED: FLUSH";
         return_none
       | size   ->
         let size = int_of_string ("0x" ^ size) - 4 in
         IO.read_exactly ic size >>= fun payload ->
-        Log.debugf "RECEIVED: %S (%d)" payload size;
+        Log.debug "RECEIVED: %S (%d)" payload size;
         if payload.[size - 1] = Misc.lf then
           return (Some (String.sub payload 0 (size-1)))
         else
@@ -252,7 +252,7 @@ module Make (IO: IO) (Store: Store.S) = struct
       Buffer.contents buf
 
     let input ic =
-      Log.debugf "Listing.input";
+      Log.debug "Listing.input";
       let rec aux acc =
         PacketLine.input ic >>= function
         | None      -> return acc
@@ -303,7 +303,7 @@ module Make (IO: IO) (Store: Store.S) = struct
       | Nak
 
     let input ic =
-      Log.debugf "Ack.input";
+      Log.debug "Ack.input";
       PacketLine.input ic >>= function
       | None
       | Some "NAK" -> return Nak
@@ -317,7 +317,7 @@ module Make (IO: IO) (Store: Store.S) = struct
         | _ -> error "%S invalid ack" s
 
     let inputs ic =
-      Log.debugf "Ack.inputs";
+      Log.debug "Ack.inputs";
       let rec aux acc =
         input ic >>= function
         | Nak -> return (List.rev (Nak :: acc))
@@ -366,7 +366,7 @@ module Make (IO: IO) (Store: Store.S) = struct
     let create l = l
 
     let input ic =
-      Log.debugf "Upload.input";
+      Log.debug "Upload.input";
       let rec aux acc =
         PacketLine.input ic >>= function
         | None   -> return (List.rev acc)
@@ -398,7 +398,7 @@ module Make (IO: IO) (Store: Store.S) = struct
 
     (* XXX: handler multi_hack *)
     let output oc t =
-      Log.debugf "Upload.output";
+      Log.debug "Upload.output";
       let last_c = ref [] in
 
       (* output wants *)
@@ -459,7 +459,7 @@ module Make (IO: IO) (Store: Store.S) = struct
     (* PHASE1: the client send the the IDs he wants, the severs answer
        the new shallow state. *)
     let phase1 (ic, oc) ?deepen ~shallows ~wants =
-      Log.debugf "Upload.phase1";
+      Log.debug "Upload.phase1";
       let wants = List.map ~f:(fun id -> Want (id, Capabilities.default)) wants in
       let shallows = List.map ~f:(fun id -> Shallow id) shallows in
       let deepen = match deepen with
@@ -533,7 +533,7 @@ module Make (IO: IO) (Store: Store.S) = struct
       IO.with_connection h (Init.port r)(fun (ic, oc) ->
           Init.output oc r     >>= fun () ->
           Listing.input ic     >>= fun listing ->
-          Log.debugf "listing:\n %s" (Listing.pretty listing);
+          Log.debug "listing:\n %s" (Listing.pretty listing);
           let references =
             List.fold_left ~f:(fun acc (sha1, refs) ->
                 List.fold_left
@@ -562,7 +562,7 @@ module Make (IO: IO) (Store: Store.S) = struct
               Init.close oc >>= fun () ->
               return { head; references; sha1s = [] }
             | Some head ->
-              Log.debugf "PHASE1";
+              Log.debug "PHASE1";
               let deepen = match op with
                 | Clone { deepen }
                 | Fetch { deepen } -> deepen
@@ -575,17 +575,17 @@ module Make (IO: IO) (Store: Store.S) = struct
               (* XXX: process the shallow / unshallow.  *)
               (* XXX: need a notion of shallow/unshallow in API. *)
 
-              Log.debugf "PHASE2";
+              Log.debug "PHASE2";
               let haves = match op with
                 | Fetch { haves } -> haves
                 | _               -> [] in
               Upload.phase2 (ic,oc) ~haves >>= fun () ->
 
-              Log.debugf "PHASE3";
+              Log.debug "PHASE3";
               printf "Receiving data ...%!";
               IO.read_all ic >>= fun raw ->
               printf " done.\n%!";
-              Log.debugf "Received a pack file of %d bytes." (String.length raw);
+              Log.debug "Received a pack file of %d bytes." (String.length raw);
               let pack = Bigstring.of_string raw in
 
               let unpack = match op with
@@ -601,21 +601,21 @@ module Make (IO: IO) (Store: Store.S) = struct
               end >>= fun sha1s ->
               match SHA1.Set.to_list sha1s with
               | []    ->
-                Log.debugf "NO NEW OBJECTS";
+                Log.debug "NO NEW OBJECTS";
                 Printf.printf "Already up-to-date.\n%!";
                 return { head = Some head; references; sha1s = [] }
               | sha1s ->
-                Log.debugf "NEW OBJECTS";
+                Log.debug "NEW OBJECTS";
                 printf "remote: Counting objects: %d, done.\n%!"
                   (List.length sha1s);
                 let bare = match op with
                   | Clone { bare } -> bare
                   | _              -> true in
                 if not bare then (
-                  Log.debugf "EXPANDING THE FILESYSTEM";
+                  Log.debug "EXPANDING THE FILESYSTEM";
                   return { head = Some head; references; sha1s }
                 ) else (
-                  Log.debugf "BARE REPOSITORY";
+                  Log.debug "BARE REPOSITORY";
                   return { head = None; references; sha1s }
                 )
         )

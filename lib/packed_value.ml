@@ -268,7 +268,7 @@ module Make (M: sig val version: int end) = struct
         low lor (ss lsl 4)
       else low in
 
-    Log.debugf "input: kind:%d size:%d (more=%b)" kind size more;
+    Log.debug "input: kind:%d size:%d (more=%b)" kind size more;
 
     let mk typ str =
       let size = Bigstring.length str in
@@ -335,7 +335,7 @@ module Make (M: sig val version: int end) = struct
         | Object_type.Blob   -> 0b011
         | Object_type.Tag    -> 0b100 in
     let more = if size > 0x0f then 0x80 else 0 in
-    Log.debugf "add kind:%d size:%d (%b %d)"
+    Log.debug "add kind:%d size:%d (%b %d)"
       kind size (more=0x80) (size land 0x0f);
     let byte = more lor (kind lsl 4) lor (size land 0x0f) in
     Bigbuffer.add_char buf (Char.of_int_exn byte);
@@ -384,19 +384,19 @@ module PIC = struct
     match Value.Cache.find pic.sha1 with
     | Some x -> x
     | None   ->
-      Log.debugf "unpack %s" (pretty pic);
+      Log.debug "unpack %s" (pretty pic);
       let str =
         match pic.kind with
         | Raw x  -> x
         | Link d ->
-          Log.debugf "unpack: hop to %s" (SHA1.to_hex d.source.sha1);
+          Log.debug "unpack: hop to %s" (SHA1.to_hex d.source.sha1);
           let source = unpack d.source in
           Misc.with_buffer (fun buf -> add_delta buf { d with source }) in
       Value.Cache.add pic.sha1 str;
       str
 
   let to_value p =
-    Log.debugf "to_value";
+    Log.debug "to_value";
     let buf = unpack p in
     Value.input_inflated (Mstruct.of_string buf)
 
@@ -439,7 +439,7 @@ let to_pic offsets sha1s (pos, sha1, t) =
 
 let rec unpack ?(lv=0) ~version ~index ~ba (pos, t) =
   let ba_len = Bigarray.Array1.dim ba in
-  Log.debugf "unpack[%d]: ba_len=%d" lv ba_len;
+  Log.debug "unpack[%d]: ba_len=%d" lv ba_len;
   let input_packed_value =
     match version with
     | 2 -> V2.input
@@ -451,14 +451,14 @@ let rec unpack ?(lv=0) ~version ~index ~ba (pos, t) =
   let unpacked = 
     match t with
     | Raw_value x -> begin
-        Log.debugf "unpack[%d]: Raw_value" lv; 
+        Log.debug "unpack[%d]: Raw_value" lv; 
         x
     end
     | Ref_delta d -> begin 
-        Log.debugf "unpack[%d]: Ref_delta: d.source=%s" lv (SHA1.to_hex d.source);
+        Log.debug "unpack[%d]: Ref_delta: d.source=%s" lv (SHA1.to_hex d.source);
         match index#find_offset (* SHA1.Map.find index.Pack_index.offsets *) d.source with
         | Some offset -> begin
-            Log.debugf "unpack[%d]: offset=%d" lv offset;
+            Log.debug "unpack[%d]: offset=%d" lv offset;
             let offset = offset - 12 in (* header skipped *) 
             let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
             let packed_v = input_packed_value buf in
@@ -473,9 +473,9 @@ let rec unpack ?(lv=0) ~version ~index ~ba (pos, t) =
         end
     end
     | Off_delta d -> begin
-        Log.debugf "unpack[%d]: Off_delta: d.source=%d" lv d.source;
+        Log.debug "unpack[%d]: Off_delta: d.source=%d" lv d.source;
         let offset = pos - d.source in
-        Log.debugf "unpack[%d]: offset=%d-%d=%d" lv pos d.source offset;
+        Log.debug "unpack[%d]: offset=%d-%d=%d" lv pos d.source offset;
         let buf = Mstruct.of_bigarray ~off:offset ~len:(ba_len-offset) ba in
         let packed_v = input_packed_value buf in
 	let u = unpack ~lv:(lv+1) ~version ~index ~ba (offset, packed_v) in

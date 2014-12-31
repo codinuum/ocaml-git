@@ -55,12 +55,12 @@ module M = struct
 
   let read_file file =
     let open Lwt in
-    Log.infof "Reading \"%s\"" file;
+    Log.info "Reading \"%s\"" file;
     Unix.handle_unix_error (fun () ->
         let fd = Unix.(openfile file [O_RDONLY; O_NONBLOCK] 0o644) in
         let ba = Lwt_bytes.map_file ~fd ~shared:false () in
         Unix.close fd;
-        Log.infof "Closed: \"%s\"" file;
+        Log.info "Closed: \"%s\"" file;
         ba
       ) ()
 
@@ -73,7 +73,7 @@ module M = struct
         else
           catch
             (fun () ->
-               Log.debugf "mkdir %s" dir;
+               Log.debug "mkdir %s" dir;
                Lwt_unix.mkdir dir 0o755)
             (fun _ -> return_unit)
       ) in
@@ -137,7 +137,7 @@ let write_string fd b =
   rwrite fd b 0 (String.length b)
 
 let with_write_file file fn =
-  Log.infof "Writing %s" file;
+  Log.info "Writing %s" file;
   mkdir (Filename.dirname file) >>= fun () ->
   Lwt_unix.(openfile file [O_WRONLY; O_NONBLOCK; O_CREAT; O_TRUNC] 0o644) >>= fun fd ->
   catch

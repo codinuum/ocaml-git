@@ -84,7 +84,7 @@ module Raw = struct
     | _ -> failwith "pack version should be 2 or 3"
 
 let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
-    Log.debugf "index_of_values_aux";
+    Log.debug "index_of_values_aux";
     let empty = Pack_index.empty ~pack_checksum () in
     let rec loop (offsets, index) = function
       | [] -> return index
@@ -143,19 +143,19 @@ let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
 
   let read buf index sha1 =
     let version, count = input_header buf in
-    Log.debugf "read: version=%d count=%d" version count;
+    Log.debug "read: version=%d count=%d" version count;
     begin
       match index#find_offset sha1 with
       | Some offset -> begin
-          Log.debugf "read: offset=%d" offset;
+          Log.debug "read: offset=%d" offset;
           let orig_off = Mstruct.offset buf in
           let orig_len = Mstruct.length buf in
-          Log.debugf "read: buf: orig_off=%d orig_len=%d" orig_off orig_len;
+          Log.debug "read: buf: orig_off=%d orig_len=%d" orig_off orig_len;
 	  let ba = Mstruct.to_bigarray buf in
           Mstruct.shift buf (offset - orig_off);
-          Log.debugf "read: buf: off=%d len=%d (after shift:%d)" (Mstruct.offset buf) (Mstruct.length buf) (offset-orig_off);
+          Log.debug "read: buf: off=%d len=%d (after shift:%d)" (Mstruct.offset buf) (Mstruct.length buf) (offset-orig_off);
           let packed_v = input_packed_value version buf in
-          Log.debugf "read: buf: off=%d len=%d (after input_packed_value)" (Mstruct.offset buf) (Mstruct.length buf);
+          Log.debug "read: buf: off=%d len=%d (after input_packed_value)" (Mstruct.offset buf) (Mstruct.length buf);
 	  Some (Packed_value.to_value ~version ~index ~ba (offset-orig_off, packed_v))
       end
       | None -> None
@@ -164,7 +164,7 @@ let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
   let input buf ~index =
     let offset = Mstruct.offset buf in
     let version, count = input_header buf in
-    Log.debugf "input version:%d count:%d" version count;
+    Log.debug "input version:%d count:%d" version count;
     let values = ref [] in
     for i = 0 to count - 1 do
       let pos = Mstruct.offset buf in
@@ -184,7 +184,7 @@ let index_of_values_aux (return, bind) ~sha1 ~pack_checksum values =
         (SHA1.to_hex checksum) (SHA1.to_hex pack_checksum);
       failwith "Pack.input"
     );
-    Log.debugf "input checksum: %s" (SHA1.to_hex pack_checksum);
+    Log.debug "input checksum: %s" (SHA1.to_hex pack_checksum);
     if Int.(Mstruct.length buf <> 0) then (
       eprintf "Pack.input: unprocessed data.";
       failwith "Pack.input";
@@ -238,7 +238,7 @@ let pretty t =
   Buffer.contents buf
 
 let to_pic { Raw.values; index }  =
-  Log.debugf "to_pic";
+  Log.debug "to_pic";
   let inv_offsets = Int.Map.of_alist_exn
       (List.Assoc.inverse (SHA1.Map.to_alist index.Pack_index.offsets)) in
   let _offsets, _sha1, pics =
@@ -256,7 +256,7 @@ let to_pic { Raw.values; index }  =
   List.rev pics
 
 let input buf ~index =
-  Log.debugf "input";
+  Log.debug "input";
   to_pic (Raw.input buf ~index)
 
 let add_packed_value ~version buf = match version with
@@ -265,7 +265,7 @@ let add_packed_value ~version buf = match version with
   | _ -> failwith "pack version should be 2 or 3"
 
 let add buf t =
-  Log.debugf "add";
+  Log.debug "add";
   let version = 2 in
   Raw.add_header ~version buf (List.length t);
   let _index= List.fold_left ~f:(fun index (_, pic) ->
@@ -275,7 +275,7 @@ let add buf t =
       Packed_value.PIC.Map.add index pic pos
     ) ~init:Packed_value.PIC.Map.empty t in
   let sha1 = SHA1.create (Bigbuffer.contents buf) in
-  Log.debugf "add sha1: %s" (SHA1.to_hex sha1);
+  Log.debug "add sha1: %s" (SHA1.to_hex sha1);
   SHA1.add buf sha1
 
 let keys t =
@@ -284,7 +284,7 @@ let keys t =
     ) ~init:SHA1.Set.empty t
 
 let unpack ~write buf =
-  Log.debugf "XXX unpack";
+  Log.debug "XXX unpack";
   let i = ref 0 in
   let pack = Raw.input (Mstruct.of_bigarray buf) ~index:None in
   let pack = to_pic pack in
@@ -301,7 +301,7 @@ let unpack ~write buf =
   return (keys pack)
 
 let of_pic t =
-  Log.debugf "of_pic";
+  Log.debug "of_pic";
   let buf = Misc.with_bigbuffer (fun buf -> add buf t) in
   Raw.input (Mstruct.of_bigarray buf) ~index:None
 
